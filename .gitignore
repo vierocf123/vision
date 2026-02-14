@@ -1,0 +1,12 @@
+# Ignorar o ambiente virtual
+.venv/
+venv/
+
+# Ignorar pastas de fotos (são pesadas demais para o Git)
+data/raw/
+data/
+
+# Ignorar arquivos temporários do Python e do VS Code
+__pycache__/
+.vscode/
+tempCodeRunnerFile.py

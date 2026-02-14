@@ -1,0 +1,137 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using OpenCvSharp;
+
+namespace FotosDataSet
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // 1. Scanner de Hardware
+            var cameras = DetectarCameras();
+            if (cameras.Count == 0)
+            {
+                Console.WriteLine("\n[!] Nenhuma câmera detectada.");
+                return;
+            }
+
+            // 2. Seleção de Câmera
+            Console.Write("\nDIGITE O ÍNDICE DA CÂMERA E ENTER: ");
+            if (int.TryParse(Console.ReadLine(), out int escolha) && cameras.Contains(escolha))
+            {
+                // Configurações conforme seu projeto Python
+                string baseDir = @"E:\eFact\Fotos_Data_Set";
+                string classeNome = "produto_v01";
+
+                var collector = new DatasetCollector(baseDir, classeNome, escolha);
+                collector.Run();
+            }
+            else
+            {
+                Console.WriteLine("[ERRO] Índice inválido.");
+            }
+        }
+
+        static List<int> DetectarCameras()
+        {
+            Console.WriteLine("\n" + new string('=', 40));
+            Console.WriteLine("      SCANNER DE HARDWARE (C#)      ");
+            Console.WriteLine(new string('=', 40));
+            
+            var disponiveis = new List<int>();
+            for (int i = 0; i < 5; i++)
+            {
+                using var cap = new VideoCapture(i, VideoCaptureAPIs.DShow);
+                if (cap.IsOpened())
+                {
+                    disponiveis.Add(i);
+                    Console.WriteLine($"[ DISPONÍVEL ] -> Índice {i}");
+                }
+            }
+            return disponiveis;
+        }
+    }
+
+    class DatasetCollector
+    {
+        private string _savePath;
+        private string _className;
+        private VideoCapture _cap;
+        private int _count = 0;
+        private Mat _lastSavedFrame = null;
+        private string _winLive = "1. AO VIVO (S)";
+        private string _winLast = "2. ULTIMA FOTO";
+
+        public DatasetCollector(string basePath, string className, int cameraIndex)
+        {
+            _className = className;
+            _savePath = Path.Combine(basePath, "data", "raw", className);
+            Directory.CreateDirectory(_savePath);
+
+            // Inicia Câmera com DSHOW para performance
+            _cap = new VideoCapture(cameraIndex, VideoCaptureAPIs.DShow);
+            _cap.Set(VideoCaptureProperties.FrameWidth, 1280);
+            _cap.Set(VideoCaptureProperties.FrameHeight, 720);
+        }
+
+        public void Run()
+        {
+            if (!_cap.IsOpened()) return;
+
+            // Setup de Janelas Lado a Lado
+            Cv2.NamedWindow(_winLive, WindowFlags.Normal);
+            Cv2.NamedWindow(_winLast, WindowFlags.Normal);
+            Cv2.ResizeWindow(_winLive, 480, 270);
+            Cv2.ResizeWindow(_winLast, 480, 270);
+            Cv2.MoveWindow(_winLive, 50, 50);
+            Cv2.MoveWindow(_winLast, 550, 50);
+
+            using var frame = new Mat();
+            while (true)
+            {
+                _cap.Read(frame);
+                if (frame.Empty()) break;
+
+                // Janela Ao Vivo
+                using var liveView = new Mat();
+                Cv2.Resize(frame, liveView, new Size(480, 270));
+                Cv2.PutText(liveView, $"Fotos: {_count}", new Point(10, 30), 
+                            HersheyFonts.HersheySimplex, 0.7, Scalar.Yellow, 2);
+                
+                Cv2.ImShow(_winLive, liveView);
+                Cv2.SetWindowProperty(_winLive, WindowProperty.Topmost, 1);
+
+                // Janela de Feedback
+                if (_lastSavedFrame != null)
+                {
+                    using var lastView = new Mat();
+                    Cv2.Resize(_lastSavedFrame, lastView, new Size(480, 270));
+                    Cv2.ImShow(_winLast, lastView);
+                    Cv2.SetWindowProperty(_winLast, WindowProperty.Topmost, 1);
+                }
+
+                int key = Cv2.WaitKey(1);
+                if (key == 's' || key == 'S')
+                {
+                    string ts = DateTime.Now.ToString("HHmmss_fff");
+                    string fileName = Path.Combine(_savePath, $"{_className}_{ts}.jpg");
+                    
+                    if (frame.ImWrite(fileName))
+                    {
+                        _count++;
+                        _lastSavedFrame = frame.Clone();
+                        Cv2.PutText(_lastSavedFrame, "SALVO!", new Point(50, 150), 
+                                    HersheyFonts.HersheySimplex, 2, Scalar.Green, 5);
+                        Console.WriteLine($">>> [{_count}] Salvo em C#!");
+                    }
+                }
+                else if (key == 'q' || key == 'Q') break;
+            }
+
+            _cap.Release();
+            Cv2.DestroyAllWindows();
+        }
+    }
+}
